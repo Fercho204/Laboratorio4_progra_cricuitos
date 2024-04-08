@@ -1,0 +1,86 @@
+// Laboratorio 4 finalizado
+//------------------------------------------------------------------------------
+// Encabezado
+//------------------------------------------------------------------------------
+// Universidad del valle de Guatemala
+// IE2023 Programación de Microcontroladores
+// Author : Fernando José Pérez Palomo - 22357
+// Laboratorio: Laboratorio4.asm
+// Descripción: contador de 8 bits usando pushbuttons y display con señales analógicas (ADC)
+// Hardware: ATMega328P
+
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+
+#define BTN_INC_PIN PB0 // Pin del botón de incremento (pin 8 en Arduino Nano)
+#define BTN_DEC_PIN PB1 // Pin del botón de decremento (pin 9 en Arduino Nano)
+#define LED_PORT PORTC   // Puerto de salida para los LEDs
+#define LED_DDR DDRC     // Registro de dirección para los LEDs
+
+volatile uint8_t contador = 0; // Variable para almacenar el valor del contador
+
+void setup(void) {
+	// Configurar los pines de los botones como entrada con pull-up
+	DDRB &= ~(1 << BTN_INC_PIN);
+	PORTB |= (1 << BTN_INC_PIN);
+	DDRB &= ~(1 << BTN_DEC_PIN);
+	PORTB |= (1 << BTN_DEC_PIN);
+
+	// Configurar los pines de los LEDs como salida
+	LED_DDR = 0xFF;
+
+	// Inicializar el valor del contador en los LEDs
+	LED_PORT = contador;
+
+	// Habilitar las interrupciones externas para los botones
+	PCICR |= (1 << PCIE0); // Habilita la interrupción de pines PCINT0-7 PCIE0 = PORTB
+	PCMSK0 |= (1 << PCINT0) | (1 << PCINT1); // Habilita la interrupción en PB0 y PB1
+
+	// Habilita las interrupciones globales
+	sei();
+}
+
+int main(void) {
+	setup(); // Llama a la función setup para inicializar todo
+
+	// Bucle infinito
+	while (1) {
+		// Aquí no hay tareas que realizar, todo se maneja mediante interrupciones
+	}
+
+	return 0;
+}
+
+// Rutina de interrupción para los botones de incremento y decremento
+ISR(PCINT0_vect) {
+	// Verificar si el botón de incremento está presionado
+	if (!(PINB & (1 << BTN_INC_PIN))) {
+		_delay_ms(10); // Esperar para evitar rebotes
+		if (!(PINB & (1 << BTN_INC_PIN))) {
+			// Incrementar el contador
+			contador++;
+			if (contador > 255) contador = 0; // Reset al llegar al máximo
+
+			// Actualizar el valor del contador en los LEDs
+			LED_PORT = contador;
+
+			while (!(PINB & (1 << BTN_INC_PIN))); // Espera a que se suelte el botón
+		}
+	}
+
+	// Verificar si el botón de decremento está presionado
+	if (!(PINB & (1 << BTN_DEC_PIN))) {
+		_delay_ms(10); // Espera para evitar rebotes
+		if (!(PINB & (1 << BTN_DEC_PIN))) {
+			// Decrementar el contador
+			contador--;
+			if (contador < 0) contador = 255; // Reset al llegar al mínimo
+
+			// Actualizar el valor del contador en los LEDs
+			LED_PORT = contador;
+
+			while (!(PINB & (1 << BTN_DEC_PIN))); // Espera a que se suelte el botón
+		}
+	}
+}
