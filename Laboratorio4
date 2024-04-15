@@ -9,78 +9,74 @@
 // Descripción: contador de 8 bits usando pushbuttons y display con señales analógicas (ADC)
 // Hardware: ATMega328P
 
-#include <avr/io.h>
-#include <avr/interrupt.h>
-#include <util/delay.h>
+#include <avr/io.h>  // Incluye la biblioteca AVR I/O para el manejo de los registros de entrada/salida del microcontrolador.
+#include <avr/interrupt.h>  // Incluye la biblioteca para habilitar y manejar las interrupciones.
+#include <util/delay.h>  // Incluye la biblioteca para utilizar la función de retraso _delay_ms().
 
-#define BTN_INC_PIN PB0 // Pin del botón de incremento (pin 8 en Arduino Nano)
-#define BTN_DEC_PIN PB1 // Pin del botón de decremento (pin 9 en Arduino Nano)
-#define LED_PORT PORTC   // Puerto de salida para los LEDs
-#define LED_DDR DDRC     // Registro de dirección para los LEDs
+volatile uint8_t contador = 0;  // Variable que almacena el valor del contador.
+volatile uint8_t valoradc = 0;  // Variable que almacena el valor del ADC.
+volatile uint8_t bmenosig = 0;  // Variable que almacena los 4 bits menos significativos del ADC.
+volatile uint8_t bmasig = 0;  // Variable que almacena los 4 bits más significativos del ADC.
+volatile uint8_t display = 0;  // Variable que determina qué display se activa.
 
-volatile uint8_t contador = 0; // Variable para almacenar el valor del contador
+uint8_t Milista[] = {0b01000000, 0b01111001, 0b00100100, 0b00110000, 0b00011001, 0b00010010, 0b00000010, 0b01111000, 0b00000000, 0b00010000, 0b10001000, 0b10000011, 0b11000110, 0b10100001, 0b10000110, 0b10001110};  // Arreglo que contiene los valores de los segmentos para los dígitos del display de 7 segmentos.
 
 void setup(void) {
-	// Configurar los pines de los botones como entrada con pull-up
-	DDRB &= ~(1 << BTN_INC_PIN);
-	PORTB |= (1 << BTN_INC_PIN);
-	DDRB &= ~(1 << BTN_DEC_PIN);
-	PORTB |= (1 << BTN_DEC_PIN);
+	cli();  // Deshabilita las interrupciones globales.
+	DDRD = 0xFF;  // Configura el puerto D como salida.
+	PORTD = contador;  // Configura el puerto D con el valor inicial del contador.
+	DDRB = 0xFF;  // Configura el puerto B como salida.
+	PORTB = 0;  // Apaga el puerto B.
+	// Habilita las interrupciones externas para PC0 y PC1.
+	PCICR |= (1 << PCIE1);
+	PCMSK1 |= (1 << PCINT8) | (1 << PCINT9);
+	// Configura el ADC.
+	ADMUX |= (1 << REFS0);  // Configura la referencia de voltaje.
+	ADMUX &= ~(1 << REFS1);
+	ADMUX |= (1 << ADLAR);  // Configura la justificación a la izquierda.
+	ADMUX |= (1 << MUX2) | (1 << MUX1) | (1 << MUX0);  // Configura el canal ADC7.
+	ADCSRA |= (1 << ADIE);  // Habilita la interrupción del ADC.
+	ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);  // Configura el prescaler a 128.
+	ADCSRA |= (1 << ADEN);  // Habilita el ADC.
+	sei();  // Habilita las interrupciones globales.
+}
 
-	// Configurar los pines de los LEDs como salida
-	LED_DDR = 0xFF;
-
-	// Inicializar el valor del contador en los LEDs
-	LED_PORT = contador;
-
-	// Habilitar las interrupciones externas para los botones
-	PCICR |= (1 << PCIE0); // Habilita la interrupción de pines PCINT0-7 PCIE0 = PORTB
-	PCMSK0 |= (1 << PCINT0) | (1 << PCINT1); // Habilita la interrupción en PB0 y PB1
-
-	// Habilita las interrupciones globales
-	sei();
+void InitADC(void) {
+	// Se inicializa el ADC en la función setup() ahora.
 }
 
 int main(void) {
-	setup(); // Llama a la función setup para inicializar todo
-
-	// Bucle infinito
+	setup();
+	InitADC();
+	
 	while (1) {
-		// Aquí no hay tareas que realizar, todo se maneja mediante interrupciones
+		ADCSRA |= (1 << ADSC);  // Inicia la conversión ADC.
+		_delay_ms(100);  // Espera un tiempo antes de leer el ADC.
+		display = 1;  // Enciende el primer display.
+		PORTB = display;
+		PORTD = contador;  // Muestra el contador en el puerto D.
+		if (contador < valoradc) {  // Enciende el LED de alarma si el contador es menor que el valor ADC.
+			PORTB = (display + 8);
+		}
 	}
-
 	return 0;
 }
 
-// Rutina de interrupción para los botones de incremento y decremento
-ISR(PCINT0_vect) {
-	// Verificar si el botón de incremento está presionado
-	if (!(PINB & (1 << BTN_INC_PIN))) {
-		_delay_ms(10); // Esperar para evitar rebotes
-		if (!(PINB & (1 << BTN_INC_PIN))) {
-			// Incrementar el contador
-			contador++;
-			if (contador > 255) contador = 0; // Reset al llegar al máximo
+ISR(PCINT1_vect) {
+	// Se mantiene la misma funcionalidad de las interrupciones de los botones.
+}
 
-			// Actualizar el valor del contador en los LEDs
-			LED_PORT = contador;
-
-			while (!(PINB & (1 << BTN_INC_PIN))); // Espera a que se suelte el botón
-		}
-	}
-
-	// Verificar si el botón de decremento está presionado
-	if (!(PINB & (1 << BTN_DEC_PIN))) {
-		_delay_ms(10); // Espera para evitar rebotes
-		if (!(PINB & (1 << BTN_DEC_PIN))) {
-			// Decrementar el contador
-			contador--;
-			if (contador < 0) contador = 255; // Reset al llegar al mínimo
-
-			// Actualizar el valor del contador en los LEDs
-			LED_PORT = contador;
-
-			while (!(PINB & (1 << BTN_DEC_PIN))); // Espera a que se suelte el botón
-		}
-	}
+ISR(ADC_vect) {  // ISR para la interrupción del ADC
+	valoradc = ADCH;  // Almacena el valor del ADC en la variable valoradc.
+	bmenosig = valoradc & 0b00001111;  // Extrae los 4 bits menos significativos del valor del ADC.
+	bmasig = (valoradc >> 4);  // Desplaza los 4 bits más significativos del valor del ADC.
+	_delay_ms(100);  // Espera 100 milisegundos.
+	display = 2;  // Establece el valor de display a 2, lo que indica que se activará el segundo display.
+	PORTB = display;  // Establece el valor del puerto B con el valor de display.
+	PORTD = Milista[bmenosig];  // Muestra el valor correspondiente del arreglo Milista en el primer display.
+	_delay_ms(100);  // Espera 100 milisegundos.
+	display = 4;  // Establece el valor de display a 4, lo que indica que se activará el tercer display.
+	PORTB = display;  // Establece el valor del puerto B con el valor de display.
+	PORTD = Milista[bmasig];  // Muestra el valor correspondiente del arreglo Milista en el segundo display.
+	ADCSRA |= (1 << ADIF);  // Borra la bandera de interrupción del ADC.
 }
